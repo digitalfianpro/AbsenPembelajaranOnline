@@ -3,16 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Absen Ferdinandus - Portal Absensi Pembelajaran Online</title>
+    <title>Absen Pembelajaran Jarak Jauh - Pendidikan Kewarganegaraan</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase Libraries -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        window.FirebaseSDK = { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot };
+    </script>
     <!-- Alpine.js for lightweight state management -->
     <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <!-- Google Fonts: Inter -->
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 
     <!-- Custom Tailwind Configuration -->
     <script>
@@ -23,18 +31,25 @@
                         brand: {
                             50: '#eef2ff',
                             100: '#e0e7ff',
-                            500: '#0000FF', // Mandatory primary blue
+                            500: '#0000FF', // Primary Royal Blue
                             600: '#0000cc',
                             700: '#000099',
                             DEFAULT: '#0000FF'
+                        },
+                        lemon: {
+                            300: '#facc15',
+                            400: '#e2ff00',
+                            500: '#ccff00', // Stabilo Lemon Yellow
+                            DEFAULT: '#ccff00'
                         }
                     },
                     fontFamily: {
                         sans: ['Plus Jakarta Sans', 'sans-serif'],
                     },
                     boxShadow: {
-                        'luxury': '0 20px 40px -15px rgba(0, 0, 255, 0.12), 0 0 15px 0 rgba(0, 0, 0, 0.03)',
+                        'luxury': '0 20px 40px -15px rgba(0, 0, 255, 0.12), 0 0 15px 0 rgba(204, 255, 0, 0.15)',
                         'glow': '0 0 25px rgba(0, 0, 255, 0.35)',
+                        'lemon-glow': '0 0 20px rgba(204, 255, 0, 0.5)',
                     }
                 }
             }
@@ -69,11 +84,16 @@
         }
 
         .gradient-brand {
-            background: linear-gradient(135deg, #0000FF 0%, #2563eb 100%);
+            background: linear-gradient(135deg, #0000FF 0%, #1e40af 100%);
         }
 
-        .gradient-subtle {
-            background: linear-gradient(180deg, rgba(0,0,255,0.03) 0%, rgba(255,255,255,0) 100%);
+        .gradient-lemon {
+            background: linear-gradient(135deg, #ccff00 0%, #e2ff00 100%);
+        }
+
+        .badge-lemon {
+            background-color: #ccff00;
+            color: #0f172a;
         }
     </style>
 </head>
@@ -84,31 +104,39 @@
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between items-center h-20">
                 <!-- Logo & Brand Name -->
-                <div class="flex items-center gap-3.5">
-                    <div class="p-2 bg-white rounded-2xl shadow-md border border-blue-100 flex items-center justify-center">
+                <div class="flex items-center gap-3">
+                    <div class="p-1.5 sm:p-2 bg-white rounded-2xl shadow-md border border-blue-100 flex items-center justify-center relative overflow-hidden">
+                        <div class="absolute inset-0 bg-[#ccff00]/10 pointer-events-none"></div>
                         <img src="https://i.ibb.co.com/cXMmKG7M/logo-smp6.png" 
-                             class="h-12 sm:h-16 w-auto object-contain drop-shadow-sm" 
-                             alt="Logo Absen Ferdinandus SMPN 6" 
+                             class="h-11 sm:h-14 w-auto object-contain drop-shadow-sm relative z-10" 
+                             alt="Logo SMPN 6 Manokwari" 
                              onerror="if (this.src.includes('ibb.co.com')) { this.src='https://i.ibb.co/cXMmKG7M/logo-smp6.png'; } else { this.onerror=null; this.src='https://placehold.co/120x120/0000FF/ffffff?text=SMPN+6'; }">
                     </div>
                     <div>
-                        <span class="text-lg sm:text-2xl font-black tracking-tight text-slate-900 block leading-tight">Absen <span class="text-[#0000FF]">Ferdinandus</span></span>
-                        <span class="text-[10px] sm:text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-[#0000FF] border border-blue-200">SMPN 6 ONLINE v3.0</span>
+                        <span class="text-sm sm:text-xl font-black tracking-tight text-slate-900 block leading-tight">Absen <span class="text-[#0000FF]">Pembelajaran Jarak Jauh</span></span>
+                        <div class="flex items-center gap-1.5 mt-0.5">
+                            <span class="text-[10px] sm:text-xs font-black px-2.5 py-0.5 rounded-full bg-[#ccff00] text-slate-900 border border-yellow-300 shadow-xs uppercase tracking-wide">Pendidikan Kewarganegaraan</span>
+                            <!-- Cloud Status Indicator -->
+                            <span x-show="isCloudConnected" class="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                <span>Cloud Sync</span>
+                            </span>
+                        </div>
                     </div>
                 </div>
 
                 <!-- Navigation Tabs / Role Switcher -->
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-1.5 sm:gap-2">
                     <button @click="switchTab('student')" 
-                            :class="activeTab === 'student' ? 'bg-[#0000FF] text-white shadow-md shadow-blue-500/25' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
-                            class="px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 flex items-center gap-1.5 sm:gap-2">
+                            :class="activeTab === 'student' ? 'bg-[#0000FF] text-white shadow-md shadow-blue-500/25 ring-2 ring-[#ccff00]/60' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+                            class="px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all duration-200 flex items-center gap-1.5">
                         <i data-lucide="user-check" class="w-4 h-4"></i>
                         <span>Portal Murid</span>
                     </button>
                     
                     <button @click="openTeacherAuthModal()" 
-                            :class="activeTab === 'teacher' ? 'bg-[#0000FF] text-white shadow-md shadow-blue-500/25' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
-                            class="px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 flex items-center gap-1.5 sm:gap-2">
+                            :class="activeTab === 'teacher' ? 'bg-[#0000FF] text-white shadow-md shadow-blue-500/25 ring-2 ring-[#ccff00]/60' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+                            class="px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all duration-200 flex items-center gap-1.5">
                         <i data-lucide="shield-check" class="w-4 h-4"></i>
                         <span>Portal Guru</span>
                     </button>
@@ -121,18 +149,19 @@
     <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
 
         <!-- Banner Info Jam & Tanggal -->
-        <div class="mb-5 sm:mb-6 p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-blue-50/90 via-indigo-50/40 to-white border border-blue-100 flex flex-row items-center justify-between gap-2 shadow-xs text-xs sm:text-sm">
-            <div class="flex items-center gap-2.5">
+        <div class="mb-5 sm:mb-6 p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-blue-50 via-yellow-50/40 to-white border border-blue-100 flex flex-row items-center justify-between gap-2 shadow-xs text-xs sm:text-sm relative overflow-hidden">
+            <div class="absolute left-0 top-0 bottom-0 w-1.5 bg-[#ccff00]"></div>
+            <div class="flex items-center gap-2.5 pl-2">
                 <div class="p-2 sm:p-2.5 bg-white rounded-xl text-[#0000FF] shadow-xs border border-blue-100 shrink-0">
                     <i data-lucide="calendar" class="w-4 h-4 sm:w-5 sm:h-5"></i>
                 </div>
                 <div>
-                    <div class="text-[10px] sm:text-xs text-slate-500 font-medium">Hari ini</div>
+                    <div class="text-[10px] sm:text-xs text-slate-500 font-semibold">Presensi Pembelajaran Hari ini</div>
                     <div class="text-xs sm:text-base font-bold text-slate-800 leading-tight" x-text="currentDateString"></div>
                 </div>
             </div>
-            <div class="flex items-center gap-1.5 text-[#0000FF] font-mono font-bold bg-white px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-xl border border-blue-100 text-xs sm:text-sm shadow-xs shrink-0">
-                <i data-lucide="clock" class="w-3.5 h-3.5 sm:w-4 sm:h-4"></i>
+            <div class="flex items-center gap-1.5 text-[#0000FF] font-mono font-black bg-white px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-xl border border-blue-100 text-xs sm:text-sm shadow-xs shrink-0">
+                <i data-lucide="clock" class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#0000FF]"></i>
                 <span x-text="currentTimeString"></span>
             </div>
         </div>
@@ -144,19 +173,27 @@
             <div class="max-w-md sm:max-w-xl mx-auto px-1 sm:px-0">
                 <div class="bg-white rounded-3xl p-5 sm:p-8 shadow-luxury border border-blue-100 relative overflow-hidden">
                     <!-- Background Accents -->
-                    <div class="absolute top-0 right-0 -mt-8 -mr-8 w-36 h-36 sm:w-48 sm:h-48 bg-[#0000FF]/5 rounded-full blur-2xl pointer-events-none"></div>
-                    <div class="absolute bottom-0 left-0 -mb-8 -ml-8 w-36 h-36 sm:w-48 sm:h-48 bg-[#0000FF]/5 rounded-full blur-2xl pointer-events-none"></div>
+                    <div class="absolute top-0 right-0 -mt-8 -mr-8 w-36 h-36 sm:w-48 sm:h-48 bg-[#ccff00]/20 rounded-full blur-2xl pointer-events-none"></div>
+                    <div class="absolute bottom-0 left-0 -mb-8 -ml-8 w-36 h-36 sm:w-48 sm:h-48 bg-[#0000FF]/10 rounded-full blur-2xl pointer-events-none"></div>
 
-                    <!-- Luxury Header Logo (Ukuran Besar & Menonjol) -->
-                    <div class="text-center mb-6 flex flex-col items-center">
-                        <div class="p-3 sm:p-4 bg-gradient-to-b from-blue-50/90 to-white rounded-3xl shadow-lg border border-blue-200/80 mb-4 inline-block group hover:scale-105 transition-transform duration-300">
+                    <!-- Luxury Header Logo & Title -->
+                    <div class="text-center mb-6 flex flex-col items-center relative z-10">
+                        <div class="p-3 sm:p-4 bg-gradient-to-b from-blue-50/90 via-white to-yellow-50/50 rounded-3xl shadow-lg border border-blue-200/80 mb-3 inline-block group hover:scale-105 transition-transform duration-300 relative">
+                            <div class="absolute -inset-1 bg-gradient-to-r from-[#0000FF] via-[#ccff00] to-[#0000FF] rounded-3xl opacity-25 group-hover:opacity-50 blur-sm transition duration-300 pointer-events-none"></div>
                             <img src="https://i.ibb.co.com/cXMmKG7M/logo-smp6.png" 
-                                 class="h-20 sm:h-28 w-auto object-contain drop-shadow-md" 
-                                 alt="Logo Absen Ferdinandus SMPN 6" 
+                                 class="h-20 sm:h-28 w-auto object-contain drop-shadow-md relative z-10" 
+                                 alt="Logo SMPN 6 Manokwari" 
                                  onerror="if (this.src.includes('ibb.co.com')) { this.src='https://i.ibb.co/cXMmKG7M/logo-smp6.png'; } else { this.onerror=null; this.src='https://placehold.co/160x160/0000FF/ffffff?text=SMPN+6'; }">
                         </div>
-                        <h2 class="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">Presensi Absen Ferdinandus</h2>
-                        <p class="text-slate-500 text-xs sm:text-sm mt-1 max-w-xs sm:max-w-md leading-relaxed">Silakan pilih kelas dan nama Anda untuk presensi pembelajaran online hari ini.</p>
+
+                        <!-- Subject Tag -->
+                        <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#ccff00] text-slate-900 text-xs font-black mb-2 shadow-xs border border-yellow-300">
+                            <i data-lucide="book-open" class="w-3.5 h-3.5"></i>
+                            <span>Pendidikan Kewarganegaraan</span>
+                        </div>
+
+                        <h2 class="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">Absen Pembelajaran Jarak Jauh</h2>
+                        <p class="text-slate-500 text-xs sm:text-sm mt-1 max-w-xs sm:max-w-md leading-relaxed">Pilih kelas dan nama Anda untuk mengisi daftar hadir presensi pembelajaran online hari ini.</p>
                     </div>
 
                     <!-- Attendance Form -->
@@ -166,7 +203,7 @@
                         <div>
                             <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5 flex items-center justify-between">
                                 <span>1. Pilih Kelas <span class="text-red-500">*</span></span>
-                                <span class="text-[10px] text-blue-600 font-semibold bg-blue-50 px-2 py-0.5 rounded-md">Langkah 1 dari 3</span>
+                                <span class="text-[10px] text-slate-900 font-extrabold bg-[#ccff00] px-2 py-0.5 rounded-md border border-yellow-300">Langkah 1 dari 3</span>
                             </label>
                             <div class="relative">
                                 <select x-model="studentForm.classId" @change="onClassChange()" class="w-full pl-10 pr-10 py-3 sm:py-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#0000FF] focus:border-[#0000FF] text-slate-800 text-xs sm:text-sm font-bold appearance-none transition-all shadow-xs">
@@ -188,7 +225,7 @@
                         <div>
                             <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5 flex items-center justify-between">
                                 <span>2. Pilih Nama Murid <span class="text-red-500">*</span></span>
-                                <span class="text-[10px] text-blue-600 font-semibold bg-blue-50 px-2 py-0.5 rounded-md">Langkah 2 dari 3</span>
+                                <span class="text-[10px] text-slate-900 font-extrabold bg-[#ccff00] px-2 py-0.5 rounded-md border border-yellow-300">Langkah 2 dari 3</span>
                             </label>
                             <div class="relative">
                                 <select x-model="studentForm.studentName" @change="checkDuplicateAttendance()" :disabled="!studentForm.classId" class="w-full pl-10 pr-10 py-3 sm:py-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#0000FF] focus:border-[#0000FF] text-slate-800 text-xs sm:text-sm font-bold appearance-none transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-xs">
@@ -212,7 +249,7 @@
                                     <div>
                                         <p class="font-bold">Siswa Sudah Mengisi Hari Ini!</p>
                                         <p class="text-[11px] text-amber-700 mt-0.5">
-                                            Nama <span class="font-bold underline" x-text="studentForm.studentName"></span> sudah tercatat presensi pada jam <span class="font-mono font-bold" x-text="formatTime(getStudentTodayRecord(studentForm.studentName)?.timestamp)"></span>. Setiap siswa hanya dapat mengisi 1 kali sehari.
+                                            Nama <span class="font-bold underline" x-text="studentForm.studentName"></span> sudah tercatat presensi PKn pada jam <span class="font-mono font-bold" x-text="formatTime(getStudentTodayRecord(studentForm.studentName)?.timestamp)"></span>.
                                         </p>
                                     </div>
                                 </div>
@@ -223,25 +260,25 @@
                         <div>
                             <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5 flex items-center justify-between">
                                 <span>3. Status Kehadiran Hari Ini <span class="text-red-500">*</span></span>
-                                <span class="text-[10px] text-blue-600 font-semibold bg-blue-50 px-2 py-0.5 rounded-md">Langkah 3 dari 3</span>
+                                <span class="text-[10px] text-slate-900 font-extrabold bg-[#ccff00] px-2 py-0.5 rounded-md border border-yellow-300">Langkah 3 dari 3</span>
                             </label>
                             <div class="grid grid-cols-3 gap-2 sm:gap-3">
                                 <label class="relative flex flex-col items-center justify-center p-2.5 sm:p-3.5 bg-slate-50 border-2 rounded-2xl cursor-pointer transition-all duration-200 text-center active:scale-95 select-none"
-                                       :class="studentForm.status === 'Hadir' ? 'border-[#0000FF] bg-blue-50/60 text-[#0000FF] shadow-xs' : 'border-slate-200 text-slate-600 hover:border-slate-300'">
+                                       :class="studentForm.status === 'Hadir' ? 'border-[#0000FF] bg-blue-50/70 text-[#0000FF] shadow-xs' : 'border-slate-200 text-slate-600 hover:border-slate-300'">
                                     <input type="radio" x-model="studentForm.status" value="Hadir" class="sr-only">
                                     <i data-lucide="check-circle" class="w-5 h-5 sm:w-6 sm:h-6 mb-1"></i>
                                     <span class="text-xs sm:text-sm font-bold">Hadir</span>
                                 </label>
 
                                 <label class="relative flex flex-col items-center justify-center p-2.5 sm:p-3.5 bg-slate-50 border-2 rounded-2xl cursor-pointer transition-all duration-200 text-center active:scale-95 select-none"
-                                       :class="studentForm.status === 'Izin' ? 'border-amber-500 bg-amber-50/60 text-amber-600 shadow-xs' : 'border-slate-200 text-slate-600 hover:border-slate-300'">
+                                       :class="studentForm.status === 'Izin' ? 'border-amber-500 bg-amber-50/70 text-amber-600 shadow-xs' : 'border-slate-200 text-slate-600 hover:border-slate-300'">
                                     <input type="radio" x-model="studentForm.status" value="Izin" class="sr-only">
                                     <i data-lucide="file-text" class="w-5 h-5 sm:w-6 sm:h-6 mb-1"></i>
                                     <span class="text-xs sm:text-sm font-bold">Izin</span>
                                 </label>
 
                                 <label class="relative flex flex-col items-center justify-center p-2.5 sm:p-3.5 bg-slate-50 border-2 rounded-2xl cursor-pointer transition-all duration-200 text-center active:scale-95 select-none"
-                                       :class="studentForm.status === 'Sakit' ? 'border-rose-500 bg-rose-50/60 text-rose-600 shadow-xs' : 'border-slate-200 text-slate-600 hover:border-slate-300'">
+                                       :class="studentForm.status === 'Sakit' ? 'border-rose-500 bg-rose-50/70 text-rose-600 shadow-xs' : 'border-slate-200 text-slate-600 hover:border-slate-300'">
                                     <input type="radio" x-model="studentForm.status" value="Sakit" class="sr-only">
                                     <i data-lucide="heart-pulse" class="w-5 h-5 sm:w-6 sm:h-6 mb-1"></i>
                                     <span class="text-xs sm:text-sm font-bold">Sakit</span>
@@ -252,25 +289,25 @@
                         <!-- 4. Catatan -->
                         <div>
                             <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                                4. Catatan <span class="text-slate-400 font-normal">(Opsional / Alasan jika Sakit/Izin)</span>
+                                4. Catatan / Alasan <span class="text-slate-400 font-normal">(Opsional)</span>
                             </label>
-                            <textarea x-model="studentForm.notes" rows="2" placeholder="Contoh: Sakit demam / Mengikuti kegiatan..." class="w-full px-3.5 py-2.5 sm:py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#0000FF] focus:border-[#0000FF] text-slate-800 text-xs sm:text-sm font-medium transition-all shadow-xs"></textarea>
+                            <textarea x-model="studentForm.notes" rows="2" placeholder="Contoh: Sakit flu / Izin ke luar kota..." class="w-full px-3.5 py-2.5 sm:py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#0000FF] focus:border-[#0000FF] text-slate-800 text-xs sm:text-sm font-medium transition-all shadow-xs"></textarea>
                         </div>
 
                         <!-- Submit Button -->
                         <div class="pt-2">
                             <button type="submit" 
                                     :disabled="isSubmitting || checkAlreadySubmitted(studentForm.studentName)"
-                                    class="w-full py-3.5 sm:py-4 px-5 gradient-brand text-white font-black text-xs sm:text-base rounded-2xl shadow-lg shadow-blue-500/30 hover:shadow-glow hover:scale-[1.01] active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:shadow-none">
+                                    class="w-full py-3.5 sm:py-4 px-5 gradient-brand text-white font-black text-xs sm:text-base rounded-2xl shadow-lg shadow-blue-500/30 hover:shadow-glow hover:scale-[1.01] active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2.5 border border-yellow-300/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:shadow-none">
                                 <template x-if="!isSubmitting">
                                     <span class="flex items-center gap-2">
-                                        <i data-lucide="send" class="w-4 h-4 sm:w-5 sm:h-5"></i>
+                                        <i data-lucide="send" class="w-4 h-4 sm:w-5 sm:h-5 text-[#ccff00]"></i>
                                         <span x-text="checkAlreadySubmitted(studentForm.studentName) ? 'Sudah Mengisi Absen Hari Ini' : 'Kirim Kehadiran Hari Ini'"></span>
                                     </span>
                                 </template>
                                 <template x-if="isSubmitting">
                                     <span class="flex items-center gap-2">
-                                        <div class="w-4 h-4 sm:w-5 sm:h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                        <div class="w-4 h-4 sm:w-5 sm:h-5 border-2 border-[#ccff00] border-t-transparent rounded-full animate-spin"></div>
                                         <span>Memproses Data...</span>
                                     </span>
                                 </template>
@@ -290,11 +327,11 @@
             <!-- Dashboard Header & Action Controls -->
             <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-8">
                 <div>
-                    <h2 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                    <h2 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight flex items-center gap-2 flex-wrap">
                         <span>Portal Guru & Rekapitulasi</span>
-                        <span class="p-1.5 rounded-lg bg-blue-100 text-[#0000FF] text-xs font-black">Absen Ferdinandus</span>
+                        <span class="p-1.5 rounded-lg bg-[#ccff00] text-slate-900 text-xs font-black shadow-xs border border-yellow-300">PKn</span>
                     </h2>
-                    <p class="text-slate-500 text-xs sm:text-sm mt-1">Kelola daftar siswa, unduh template roster Excel, dan ekspor rekapan kelas profesional.</p>
+                    <p class="text-slate-500 text-xs sm:text-sm mt-1">Sistem Absensi Pembelajaran Jarak Jauh - Mata Pelajaran Pendidikan Kewarganegaraan.</p>
                 </div>
 
                 <!-- Teacher Toolbar Action Buttons -->
@@ -306,8 +343,8 @@
                     </button>
 
                     <!-- Export Modal Toggle -->
-                    <button @click="showExportModal = true" class="px-4 py-2.5 bg-[#0000FF] text-white hover:bg-blue-700 font-bold text-xs sm:text-sm rounded-xl shadow-md shadow-blue-500/20 transition-all flex items-center gap-2">
-                        <i data-lucide="download" class="w-4 h-4"></i>
+                    <button @click="showExportModal = true" class="px-4 py-2.5 bg-[#0000FF] text-white hover:bg-blue-700 font-bold text-xs sm:text-sm rounded-xl shadow-md shadow-blue-500/20 transition-all flex items-center gap-2 ring-2 ring-[#ccff00]/40">
+                        <i data-lucide="download" class="w-4 h-4 text-[#ccff00]"></i>
                         <span>Ekspor Rekap Per Kelas</span>
                     </button>
 
@@ -328,12 +365,13 @@
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
                 <!-- Total Hadir Card -->
                 <div class="bg-white p-5 rounded-2xl border border-blue-100 shadow-xs relative overflow-hidden">
+                    <div class="absolute top-0 right-0 w-16 h-16 bg-[#ccff00]/20 rounded-bl-full pointer-events-none"></div>
                     <div class="flex justify-between items-start">
                         <div>
                             <p class="text-xs font-extrabold text-slate-400 uppercase tracking-wider">Hadir</p>
                             <h3 class="text-2xl sm:text-3xl font-black text-[#0000FF] mt-1" x-text="stats.hadir">0</h3>
                         </div>
-                        <div class="p-3 bg-blue-50 text-[#0000FF] rounded-xl">
+                        <div class="p-3 bg-blue-50 text-[#0000FF] rounded-xl border border-blue-100">
                             <i data-lucide="user-check" class="w-6 h-6"></i>
                         </div>
                     </div>
@@ -353,7 +391,7 @@
                             <i data-lucide="file-text" class="w-6 h-6"></i>
                         </div>
                     </div>
-                    <div class="mt-3 text-xs text-slate-500 font-medium">Memiliki surat / izin</div>
+                    <div class="mt-3 text-xs text-slate-500 font-medium">Memiliki keterangan izin</div>
                 </div>
 
                 <!-- Total Sakit Card -->
@@ -708,9 +746,22 @@
     </div>
 
     <!-- Footer -->
-    <footer class="mt-auto border-t border-slate-100 bg-white py-6">
-        <div class="max-w-7xl mx-auto px-4 text-center text-xs text-slate-400 font-medium">
-            <p>&copy; 2026 Absen Ferdinandus. Sistem Absensi Pembelajaran Jarak Jauh SMPN 6.</p>
+    <footer class="mt-auto border-t border-slate-200/80 bg-slate-50/60 py-4 sm:py-5">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-3 text-xs">
+            <!-- Official App Identifier Badge -->
+            <div class="flex items-center gap-2 flex-wrap justify-center">
+                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-white border border-blue-200/80 font-mono text-[11px] font-extrabold text-slate-800 shadow-xs">
+                    <i data-lucide="shield-check" class="w-3.5 h-3.5 text-[#0000FF]"></i>
+                    <span>KODE APLIKASI: <span class="text-[#0000FF]">AF-SMPN6MKW-PKN-2026.v2</span></span>
+                </span>
+                <span class="text-slate-300 font-bold hidden sm:inline">•</span>
+                <span class="text-slate-500 font-extrabold text-[11px] uppercase tracking-wider">SMP Negeri 6 Manokwari</span>
+            </div>
+
+            <!-- Official Developer Attribution -->
+            <div class="text-center md:text-right text-slate-600 font-semibold tracking-tight">
+                Sistem Didesain &amp; Dikembangkan secara Resmi oleh <span class="font-black text-slate-900 underline decoration-[#ccff00] decoration-2">ALFIAN</span> <span class="text-slate-500 font-medium">(Guru Bimbingan dan Konseling)</span>
+            </div>
         </div>
     </footer>
 
@@ -728,6 +779,8 @@
                 showPass: false,
                 authError: false,
                 isSubmitting: false,
+                isCloudConnected: false,
+                isOnlineSync: false,
                 exportClassId: 'ALL',
                 importCSVText: '',
 
@@ -820,32 +873,84 @@
                     return { hadir, izin, sakit, total, hadirPercentage: percentage };
                 },
 
-                initApp() {
+                async initApp() {
                     this.updateTime();
                     setInterval(() => this.updateTime(), 1000);
 
-                    // Load saved roster if available
-                    const savedRoster = localStorage.getItem('ferdinandus_students_roster');
-                    if (savedRoster) {
-                        try {
-                            this.studentsRoster = JSON.parse(savedRoster);
-                        } catch (e) { console.error(e); }
-                    }
-
-                    // Load saved records from localStorage
-                    const savedData = localStorage.getItem('ferdinandus_absen_records');
-                    if (savedData) {
-                        try {
-                            this.attendanceRecords = JSON.parse(savedData);
-                        } catch (e) {
-                            this.seedDefaultRecords();
-                        }
-                    } else {
-                        this.seedDefaultRecords();
-                    }
-
                     if (sessionStorage.getItem('edu_teacher_auth') === 'true') {
                         this.isTeacherAuthenticated = true;
+                    }
+
+                    // Helper to await Firebase Module initialization
+                    const waitForFB = () => new Promise(resolve => {
+                        if (window.fb) return resolve(window.fb);
+                        const interval = setInterval(() => {
+                            if (window.fb) {
+                                clearInterval(interval);
+                                resolve(window.fb);
+                            }
+                        }, 50);
+                    });
+
+                    try {
+                        const fb = await waitForFB();
+                        
+                        // Firebase Authentication Setup
+                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                            await fb.signInWithCustomToken(fb.auth, __initial_auth_token);
+                        } else {
+                            await fb.signInAnonymously(fb.auth);
+                        }
+
+                        this.isCloudConnected = true;
+                        this.isOnlineSync = true;
+
+                        // Strict Firestore Paths as required
+                        const attendanceColl = fb.collection(fb.db, 'artifacts', fb.appId, 'public', 'data', 'attendance_records');
+                        const rosterColl = fb.collection(fb.db, 'artifacts', fb.appId, 'public', 'data', 'roster_data');
+
+                        // Real-time Firestore Attendance Listener
+                        fb.onSnapshot(attendanceColl, (snapshot) => {
+                            const records = [];
+                            snapshot.forEach(doc => {
+                                records.push({ id: doc.id, ...doc.data() });
+                            });
+                            records.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                            this.attendanceRecords = records;
+                        }, (error) => {
+                            console.error("Firestore attendance listener error:", error);
+                        });
+
+                        // Real-time Firestore Student Roster Listener
+                        fb.onSnapshot(rosterColl, (snapshot) => {
+                            if (!snapshot.empty) {
+                                const cloudRoster = {};
+                                snapshot.forEach(doc => {
+                                    const data = doc.data();
+                                    if (data.classId && data.students) {
+                                        cloudRoster[data.classId] = data.students;
+                                    }
+                                });
+                                if (Object.keys(cloudRoster).length > 0) {
+                                    this.studentsRoster = cloudRoster;
+                                }
+                            } else {
+                                this.saveRosterToCloud();
+                            }
+                        }, (error) => {
+                            console.error("Firestore roster listener error:", error);
+                        });
+
+                    } catch (e) {
+                        console.error("Firebase init fallback to LocalStorage:", e);
+                        const savedRoster = localStorage.getItem('ferdinandus_students_roster');
+                        if (savedRoster) {
+                            try { this.studentsRoster = JSON.parse(savedRoster); } catch (err) {}
+                        }
+                        const savedData = localStorage.getItem('ferdinandus_absen_records');
+                        if (savedData) {
+                            try { this.attendanceRecords = JSON.parse(savedData); } catch (err) {}
+                        }
                     }
 
                     this.$nextTick(() => {
@@ -853,19 +958,141 @@
                     });
                 },
 
-                seedDefaultRecords() {
-                    const today = new Date().toISOString();
-                    this.attendanceRecords = [
-                        { id: '1', classId: 'VII-A', studentName: 'Aditya Pratama', status: 'Hadir', notes: 'Hadir Zoom', timestamp: today },
-                        { id: '2', classId: 'VII-A', studentName: 'Aisyah Putri', status: 'Hadir', notes: '', timestamp: today },
-                        { id: '3', classId: 'VIII-B', studentName: 'Rian Hidayat', status: 'Izin', notes: 'Urusan Keluarga', timestamp: today },
-                        { id: '4', classId: 'IX-A', studentName: 'Vina Panduwinata', status: 'Sakit', notes: 'Sakit Flu', timestamp: today }
-                    ];
-                    this.saveToStorage();
+                async submitAttendance() {
+                    if (!this.studentForm.classId || !this.studentForm.studentName) {
+                        this.showToast('Form Belum Lengkap', 'Silakan pilih kelas dan nama murid terlebih dahulu.', 'error');
+                        return;
+                    }
+
+                    if (this.checkAlreadySubmitted(this.studentForm.studentName)) {
+                        this.showToast('Sudah Mengisi Absen', `Siswa a.n ${this.studentForm.studentName} sudah melakukan pengisian absensi hari ini!`, 'error');
+                        return;
+                    }
+
+                    this.isSubmitting = true;
+
+                    try {
+                        const newRecord = {
+                            classId: this.studentForm.classId,
+                            studentName: this.studentForm.studentName,
+                            status: this.studentForm.status,
+                            notes: this.studentForm.notes || '',
+                            timestamp: new Date().toISOString()
+                        };
+
+                        if (window.fb && window.fb.db) {
+                            const attendanceColl = window.fb.collection(window.fb.db, 'artifacts', window.fb.appId, 'public', 'data', 'attendance_records');
+                            await window.fb.addDoc(attendanceColl, newRecord);
+                        } else {
+                            newRecord.id = Date.now().toString();
+                            this.attendanceRecords.unshift(newRecord);
+                            localStorage.setItem('ferdinandus_absen_records', JSON.stringify(this.attendanceRecords));
+                        }
+
+                        this.studentForm.studentName = '';
+                        this.studentForm.notes = '';
+                        this.studentForm.status = 'Hadir';
+                        this.isSubmitting = false;
+
+                        this.showToast('Kehadiran Terkirim!', 'Presensi Anda berhasil tersimpan secara real-time.', 'success');
+                    } catch (err) {
+                        console.error("Error submitting attendance:", err);
+                        this.isSubmitting = false;
+                        this.showToast('Gagal Mengirim', 'Terjadi kendala koneksi ke database cloud.', 'error');
+                    }
                 },
 
-                saveToStorage() {
-                    localStorage.setItem('ferdinandus_absen_records', JSON.stringify(this.attendanceRecords));
+                async deleteRecord(id) {
+                    try {
+                        if (window.fb && window.fb.db) {
+                            const docRef = window.fb.doc(window.fb.db, 'artifacts', window.fb.appId, 'public', 'data', 'attendance_records', id);
+                            await window.fb.deleteDoc(docRef);
+                        } else {
+                            this.attendanceRecords = this.attendanceRecords.filter(r => r.id !== id);
+                            localStorage.setItem('ferdinandus_absen_records', JSON.stringify(this.attendanceRecords));
+                        }
+                        this.showToast('Data Dihapus', 'Data absensi berhasil dihapus.', 'success');
+                    } catch (err) {
+                        console.error("Error deleting record:", err);
+                        this.showToast('Gagal Menghapus', 'Tidak dapat menghapus data.', 'error');
+                    }
+                },
+
+                async addNewStudent() {
+                    if (!this.newStudent.name) return;
+                    const classId = this.newStudent.classId;
+                    if (!this.studentsRoster[classId]) {
+                        this.studentsRoster[classId] = [];
+                    }
+                    if (!this.studentsRoster[classId].includes(this.newStudent.name)) {
+                        this.studentsRoster[classId].push(this.newStudent.name);
+                        await this.saveRosterToCloud(classId);
+                    }
+                    this.newStudent.name = '';
+                    this.showAddStudentModal = false;
+                    this.showToast('Murid Ditambahkan', 'Nama murid baru berhasil dimasukkan ke Cloud Roster.', 'success');
+                },
+
+                async saveRosterToCloud(specificClassId = null) {
+                    if (!window.fb || !window.fb.db) {
+                        localStorage.setItem('ferdinandus_students_roster', JSON.stringify(this.studentsRoster));
+                        return;
+                    }
+                    try {
+                        const rosterColl = window.fb.collection(window.fb.db, 'artifacts', window.fb.appId, 'public', 'data', 'roster_data');
+                        const classesToSave = specificClassId ? [specificClassId] : Object.keys(this.studentsRoster);
+
+                        for (const cId of classesToSave) {
+                            const docRef = window.fb.doc(rosterColl, cId);
+                            await window.fb.setDoc(docRef, {
+                                classId: cId,
+                                students: this.studentsRoster[cId] || []
+                            });
+                        }
+                    } catch (err) {
+                        console.error("Error saving roster to cloud:", err);
+                    }
+                },
+
+                async importRosterFromCSV() {
+                    if (!this.importCSVText.trim()) {
+                        this.showToast('Gagal Sinkron', 'Masukkan data teks CSV terlebih dahulu.', 'error');
+                        return;
+                    }
+
+                    const lines = this.importCSVText.split('\n');
+                    let count = 0;
+
+                    lines.forEach(line => {
+                        const parts = line.split(',');
+                        if (parts.length >= 2) {
+                            let className = parts[0].trim();
+                            let studentName = parts[1].trim();
+
+                            if (className.toLowerCase() !== 'kelas' && studentName.toLowerCase() !== 'nama murid') {
+                                let classKey = className.replace(/[^a-zA-Z0-9-]/g, '').toUpperCase();
+                                if (!classKey) classKey = 'UMUM';
+
+                                if (!this.classesList.some(c => c.id === classKey)) {
+                                    this.classesList.push({ id: classKey, name: className });
+                                }
+
+                                if (!this.studentsRoster[classKey]) {
+                                    this.studentsRoster[classKey] = [];
+                                }
+
+                                if (!this.studentsRoster[classKey].includes(studentName)) {
+                                    this.studentsRoster[classKey].push(studentName);
+                                    count++;
+                                }
+                            }
+                        }
+                    });
+
+                    await this.saveRosterToCloud();
+                    this.importCSVText = '';
+                    this.showRosterModal = false;
+                    this.showToast('Sinkronisasi Sukses', `${count} data murid tersimpan ke Cloud & Portal Murid.`, 'success');
                 },
 
                 updateTime() {
@@ -898,7 +1125,6 @@
                 },
 
                 verifyTeacherPassword() {
-                    // PASSWORD REQUIRED: KATUL
                     if (this.inputPassword === 'KATUL') {
                         this.isTeacherAuthenticated = true;
                         sessionStorage.setItem('edu_teacher_auth', 'true');
@@ -945,60 +1171,6 @@
                     });
                 },
 
-                submitAttendance() {
-                    if (!this.studentForm.classId || !this.studentForm.studentName) {
-                        this.showToast('Form Belum Lengkap', 'Silakan pilih kelas dan nama murid terlebih dahulu.', 'error');
-                        return;
-                    }
-
-                    // Check if student already checked in today (Strict Rule: 1 time per day per student name)
-                    if (this.checkAlreadySubmitted(this.studentForm.studentName)) {
-                        this.showToast('Sudah Mengisi Absen', `Siswa a.n ${this.studentForm.studentName} sudah melakukan pengisian absensi hari ini!`, 'error');
-                        return;
-                    }
-
-                    this.isSubmitting = true;
-
-                    setTimeout(() => {
-                        const newRecord = {
-                            id: Date.now().toString(),
-                            classId: this.studentForm.classId,
-                            studentName: this.studentForm.studentName,
-                            status: this.studentForm.status,
-                            notes: this.studentForm.notes,
-                            timestamp: new Date().toISOString()
-                        };
-
-                        this.attendanceRecords.unshift(newRecord);
-                        this.saveToStorage();
-
-                        this.studentForm.studentName = '';
-                        this.studentForm.notes = '';
-                        this.studentForm.status = 'Hadir';
-                        this.isSubmitting = false;
-
-                        this.showToast('Kehadiran Terkirim!', 'Presensi Anda berhasil dicatat hari ini.', 'success');
-                    }, 600);
-                },
-
-                deleteRecord(id) {
-                    this.attendanceRecords = this.attendanceRecords.filter(r => r.id !== id);
-                    this.saveToStorage();
-                    this.showToast('Data Dihapus', 'Data absensi berhasil dihapus.', 'success');
-                },
-
-                addNewStudent() {
-                    if (!this.newStudent.name) return;
-                    if (!this.studentsRoster[this.newStudent.classId]) {
-                        this.studentsRoster[this.newStudent.classId] = [];
-                    }
-                    this.studentsRoster[this.newStudent.classId].push(this.newStudent.name);
-                    localStorage.setItem('ferdinandus_students_roster', JSON.stringify(this.studentsRoster));
-                    this.newStudent.name = '';
-                    this.showAddStudentModal = false;
-                    this.showToast('Murid Ditambahkan', 'Nama murid baru berhasil dimasukkan ke roster.', 'success');
-                },
-
                 downloadExcelTemplate() {
                     let csv = "Kelas,Nama Murid\n";
                     csv += "Kelas VII-A,Ahmad Rizky\n";
@@ -1014,49 +1186,6 @@
                     document.body.removeChild(link);
 
                     this.showToast('Template Terunduh', 'Format Excel/CSV berhasil diunduh.', 'success');
-                },
-
-                importRosterFromCSV() {
-                    if (!this.importCSVText.trim()) {
-                        this.showToast('Gagal Sinkron', 'Masukkan data teks CSV terlebih dahulu.', 'error');
-                        return;
-                    }
-
-                    const lines = this.importCSVText.split('\n');
-                    let count = 0;
-
-                    lines.forEach(line => {
-                        const parts = line.split(',');
-                        if (parts.length >= 2) {
-                            let className = parts[0].trim();
-                            let studentName = parts[1].trim();
-
-                            if (className.toLowerCase() !== 'kelas' && studentName.toLowerCase() !== 'nama murid') {
-                                // Match or create class key
-                                let classKey = className.replace(/[^a-zA-Z0-9-]/g, '').toUpperCase();
-                                if (!classKey) classKey = 'UMUM';
-
-                                // Add to classesList if not exists
-                                if (!this.classesList.some(c => c.id === classKey)) {
-                                    this.classesList.push({ id: classKey, name: className });
-                                }
-
-                                if (!this.studentsRoster[classKey]) {
-                                    this.studentsRoster[classKey] = [];
-                                }
-
-                                if (!this.studentsRoster[classKey].includes(studentName)) {
-                                    this.studentsRoster[classKey].push(studentName);
-                                    count++;
-                                }
-                            }
-                        }
-                    });
-
-                    localStorage.setItem('ferdinandus_students_roster', JSON.stringify(this.studentsRoster));
-                    this.importCSVText = '';
-                    this.showRosterModal = false;
-                    this.showToast('Sinkronisasi Sukses', `${count} data murid berhasil dikaitkan ke Portal Murid.`, 'success');
                 },
 
                 exportClassExcel() {
@@ -1076,7 +1205,8 @@
                     const classNameText = selectedClass === 'ALL' ? 'Semua Kelas' : this.getClassName(selectedClass);
 
                     let csvContent = "data:text/csv;charset=utf-8,";
-                    csvContent += "=== REKAP PRESENSI MURID ONLINE - ABSEN FERDINANDUS ===\n";
+                    csvContent += "=== REKAP PRESENSI MURID ONLINE - ABSEN PEMBELAJARAN JARAK JAUH ===\n";
+                    csvContent += "Mata Pelajaran,Pendidikan Kewarganegaraan\n";
                     csvContent += `Kelas,${classNameText}\n`;
                     csvContent += `Tanggal Rekap,${this.teacherFilters.date}\n`;
                     csvContent += `Total Kehadiran,${filtered.length} Murid\n\n`;
@@ -1102,7 +1232,7 @@
                     const encodedUri = encodeURI(csvContent);
                     const link = document.createElement("a");
                     link.setAttribute("href", encodedUri);
-                    link.setAttribute("download", `Rekap_Absen_Ferdinandus_${selectedClass}_${this.teacherFilters.date}.csv`);
+                    link.setAttribute("download", `Rekap_Absen_PKn_${selectedClass}_${this.teacherFilters.date}.csv`);
                     document.body.appendChild(link);
                     link.click();
                     document.body.removeChild(link);
