@@ -1,0 +1,59 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Setiap UID guru harus didaftarkan secara manual melalui Firebase Console/Admin SDK.
+    function isTeacher() {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/teachers/$(request.auth.uid));
+    }
+
+    match /teachers/{teacherUid} {
+      // Akun hanya dapat membaca dokumen izin MILIKNYA; tidak dapat memberi izin pada diri sendiri.
+      allow get: if request.auth != null && request.auth.uid == teacherUid;
+      allow list, create, update, delete: if false;
+    }
+
+    match /roster_data/{classId} {
+      // Murid perlu melihat nama roster untuk memilih namanya.
+      // Ingat: ini dapat mengungkap nama siswa kepada siapa pun yang membuka situs.
+      allow get, list: if request.auth != null;
+      allow create, update, delete: if isTeacher();
+    }
+
+    match /attendance_records/{attendanceId} {
+      // Data absensi dan catatan hanya bisa dibaca guru yang benar-benar diotorisasi.
+      allow get, list: if isTeacher();
+      allow update, delete: if isTeacher();
+
+      // Murid anonim hanya boleh MEMBUAT satu dokumen per nama/kelas/tanggal WIT.
+      // Tidak mengizinkan overwrite: pengiriman ulang diblok oleh aturan create-only.
+      allow create: if isTeacher() || (
+        request.auth != null &&
+        request.auth.token.firebase.sign_in_provider == 'anonymous' &&
+        request.resource.data.keys().hasAll([
+          'classId', 'studentName', 'status', 'notes', 'attendanceDate', 'createdAt'
+        ]) &&
+        request.resource.data.keys().hasOnly([
+          'classId', 'studentName', 'status', 'notes', 'attendanceDate', 'createdAt'
+        ]) &&
+        request.resource.data.classId is string &&
+        request.resource.data.classId.matches('^[A-Z0-9-]{2,32}$') &&
+        request.resource.data.studentName is string &&
+        request.resource.data.studentName.matches('^[^/]{1,100}$') &&
+        request.resource.data.status in ['Hadir', 'Izin', 'Sakit'] &&
+        request.resource.data.notes is string &&
+        request.resource.data.notes.size() <= 250 &&
+        request.resource.data.attendanceDate is string &&
+        request.resource.data.attendanceDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+        request.resource.data.createdAt == request.time &&
+        attendanceId == request.resource.data.attendanceDate + '__' +
+          request.resource.data.classId + '__' + request.resource.data.studentName &&
+        exists(/databases/$(database)/documents/roster_data/$(request.resource.data.classId)) &&
+        request.resource.data.studentName in
+          get(/databases/$(database)/documents/roster_data/$(request.resource.data.classId)).data.students
+      );
+    }
+
+    // Tidak ada akses ke koleksi lain selain yang tertera di atas.
+  }
+}

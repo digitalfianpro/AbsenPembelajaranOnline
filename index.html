@@ -7,13 +7,28 @@
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Firebase Libraries -->
+    <!-- Firebase Cloud SDK: project scan-smp-6 -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, doc, getDoc, setDoc, deleteDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        window.FirebaseSDK = { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot };
+        // Konfigurasi Web Firebase memang dapat dibaca oleh browser; pengamanan DATA menggunakan Firestore Rules.
+        const firebaseConfig = {
+            apiKey: "AIzaSyAsHIiNS0-lu3UCiwgTJS8YmHbDRGwheWE",
+            authDomain: "scan-smp-6.firebaseapp.com",
+            projectId: "scan-smp-6",
+            storageBucket: "scan-smp-6.firebasestorage.app",
+            messagingSenderId: "21001074088",
+            appId: "1:21001074088:web:6dae7094db746c1553d99d",
+            measurementId: "G-PL6T1EVRZB"
+        };
+        const app = initializeApp(firebaseConfig);
+        window.fb = {
+            auth: getAuth(app), db: getFirestore(app),
+            signInAnonymously, signInWithEmailAndPassword, signOut, onAuthStateChanged,
+            collection, doc, getDoc, setDoc, deleteDoc, onSnapshot, serverTimestamp
+        };
     </script>
     <!-- Alpine.js for lightweight state management -->
     <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
@@ -95,6 +110,7 @@
             background-color: #ccff00;
             color: #0f172a;
         }
+        [x-cloak] { display: none !important; }
     </style>
 </head>
 <body x-data="appData()" x-init="initApp()" class="min-h-screen flex flex-col bg-white">
@@ -156,7 +172,7 @@
                     <i data-lucide="calendar" class="w-4 h-4 sm:w-5 sm:h-5"></i>
                 </div>
                 <div>
-                    <div class="text-[10px] sm:text-xs text-slate-500 font-semibold">Presensi Pembelajaran Hari ini</div>
+                    <div class="text-[10px] sm:text-xs text-slate-500 font-semibold">Presensi Pembelajaran Hari ini (WIT • Papua Barat)</div>
                     <div class="text-xs sm:text-base font-bold text-slate-800 leading-tight" x-text="currentDateString"></div>
                 </div>
             </div>
@@ -165,6 +181,9 @@
                 <span x-text="currentTimeString"></span>
             </div>
         </div>
+
+        <div x-cloak x-show="connectionError" class="mb-4 px-4 py-3 rounded-xl border border-red-200 bg-red-50 text-red-700 text-xs font-semibold" x-text="connectionError"></div>
+        <div x-cloak x-show="!isCloudConnected && !connectionError" class="mb-4 px-4 py-3 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 text-xs font-semibold">Sedang menghubungkan ke Firebase. Pengiriman absensi tersedia setelah koneksi siap.</div>
 
         <!-- ========================================================================= -->
         <!-- VIEW 1: PORTAL MURID -->
@@ -242,6 +261,7 @@
                                 </div>
                             </div>
 
+                            <p x-show="isCloudConnected && studentForm.classId && availableStudents.length === 0" class="mt-2 text-xs text-amber-700 font-semibold">Daftar siswa kelas ini masih kosong. Guru perlu memasukkan roster melalui Portal Guru.</p>
                             <!-- Alert Warning if Student Has Already Submitted Today -->
                             <template x-if="checkAlreadySubmitted(studentForm.studentName)">
                                 <div class="mt-2.5 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 flex items-start gap-2.5 text-xs">
@@ -297,7 +317,7 @@
                         <!-- Submit Button -->
                         <div class="pt-2">
                             <button type="submit" 
-                                    :disabled="isSubmitting || checkAlreadySubmitted(studentForm.studentName)"
+                                    :disabled="isSubmitting || !isCloudConnected || checkAlreadySubmitted(studentForm.studentName)"
                                     class="w-full py-3.5 sm:py-4 px-5 gradient-brand text-white font-black text-xs sm:text-base rounded-2xl shadow-lg shadow-blue-500/30 hover:shadow-glow hover:scale-[1.01] active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2.5 border border-yellow-300/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:shadow-none">
                                 <template x-if="!isSubmitting">
                                     <span class="flex items-center gap-2">
@@ -322,7 +342,7 @@
         <!-- ========================================================================= -->
         <!-- VIEW 2: PORTAL GURU (ADMIN DASHBOARD) -->
         <!-- ========================================================================= -->
-        <div x-show="activeTab === 'teacher' && isTeacherAuthenticated" x-transition:enter="transition ease-out duration-300 transform opacity-0 scale-95">
+        <div x-show="activeTab === 'teacher' && isTeacherAuthenticated" x-cloak x-transition:enter="transition ease-out duration-300 transform opacity-0 scale-95">
             
             <!-- Dashboard Header & Action Controls -->
             <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-8">
@@ -587,9 +607,13 @@
 
             <form @submit.prevent="verifyTeacherPassword()" class="space-y-4">
                 <div>
+                    <label class="block text-xs font-bold uppercase text-slate-700 mb-2">Email Akun Guru Firebase</label>
+                    <input type="email" x-model="teacherEmail" autocomplete="username" placeholder="guru@sekolah.sch.id" required class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#0000FF] text-slate-800 font-semibold">
+                </div>
+                <div>
                     <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">Password Guru</label>
                     <div class="relative">
-                        <input :type="showPass ? 'text' : 'password'" x-model="inputPassword" placeholder="Masukkan password..." class="w-full pl-10 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#0000FF] text-slate-800 font-bold">
+                        <input :type="showPass ? 'text' : 'password'" x-model="inputPassword" autocomplete="current-password" required placeholder="Password akun guru..." class="w-full pl-10 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#0000FF] text-slate-800 font-bold">
                         <div class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
                             <i data-lucide="key-round" class="w-4 h-4"></i>
                         </div>
@@ -599,11 +623,11 @@
                     </div>
                     <div x-show="authError" class="mt-2 text-xs font-bold text-rose-600 flex items-center gap-1">
                         <i data-lucide="alert-circle" class="w-3.5 h-3.5"></i>
-                        <span>Password Salah! Gunakan password 'KATUL'</span>
+                        <span>Login tidak berhasil. Periksa email, password, atau izin akun guru.</span>
                     </div>
                 </div>
 
-                <button type="submit" class="w-full py-3.5 bg-[#0000FF] text-white font-black rounded-xl shadow-md hover:bg-blue-700 transition-all">
+                <button type="submit" :disabled="isTeacherLoginPending" class="w-full py-3.5 bg-[#0000FF] text-white font-black rounded-xl shadow-md hover:bg-blue-700 transition-all disabled:opacity-60">
                     Masuk Portal Guru
                 </button>
             </form>
@@ -672,7 +696,7 @@
                 <button @click="showExportModal = false" class="text-slate-400 hover:text-slate-600"><i data-lucide="x" class="w-5 h-5"></i></button>
             </div>
 
-            <p class="text-xs text-slate-500 mb-4">Pilih kelas yang ingin diunduh rekapan absensinya lengkap dengan Tanggal, Bulan, Tahun, dan Waktu presensi.</p>
+            <p class="text-xs text-slate-500 mb-4">Pilih kelas yang ingin diunduh rekapan absensinya lengkap dengan Tanggal, Bulan, Tahun, dan Waktu presensi (WIT).</p>
 
             <div class="space-y-4">
                 <div>
@@ -767,504 +791,427 @@
 
     <!-- Application Engine Script -->
     <script>
+        // Kalender sekolah selalu menggunakan Waktu Indonesia Timur, tidak bergantung pada zona browser.
+        const SCHOOL_TZ = 'Asia/Jayapura';
+        function witParts(value = new Date()) {
+            const date = value instanceof Date ? value : new Date(value);
+            if (Number.isNaN(date.getTime())) return null;
+            const parts = new Intl.DateTimeFormat('en-GB', {
+                timeZone: SCHOOL_TZ, year: 'numeric', month: '2-digit', day: '2-digit'
+            }).formatToParts(date);
+            return Object.fromEntries(parts.filter(p => p.type !== 'literal').map(p => [p.type, p.value]));
+        }
+        function witDateKey(value = new Date()) {
+            const p = witParts(value);
+            return p ? `${p.year}-${p.month}-${p.day}` : '';
+        }
+        function parseRosterCsvRow(line) {
+            // CSV standar: delimiter koma dan field berselubung "..." yang dapat mengandung koma.
+            const out = []; let value = ''; let quoted = false;
+            for (let i = 0; i < line.length; i++) {
+                const ch = line[i];
+                if (ch === '"') {
+                    if (quoted && line[i + 1] === '"') { value += '"'; i++; }
+                    else quoted = !quoted;
+                } else if (ch === ',' && !quoted) {
+                    out.push(value.trim()); value = '';
+                } else value += ch;
+            }
+            if (quoted) throw new Error('Format CSV memiliki tanda petik yang tidak berpasangan.');
+            out.push(value.trim());
+            return out;
+        }
+        function csvSafe(value) {
+            // Mencegah formula injection saat CSV dibuka dalam program spreadsheet.
+            let s = String(value ?? '');
+            if (/^[\s]*[=+\-@]/.test(s)) s = "'" + s;
+            return '"' + s.replace(/"/g, '""') + '"';
+        }
+        function saveCsv(fileName, rows) {
+            const csv = '\ufeff' + rows.map(row => row.map(csvSafe).join(',')).join('\r\n');
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click(); a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 5000);
+        }
+        function classIdFromCsv(source) {
+            const normalized = source.trim().toUpperCase().replace(/^KELAS\s+/, '').replace(/\s+/g, '');
+            return /^[A-Z0-9-]{2,32}$/.test(normalized) ? normalized : '';
+        }
+        function attendanceId(dateStr, classId, name) {
+            return `${dateStr}__${classId}__${name.trim()}`;
+        }
+        async function waitForFirebase(timeoutMs = 9000) {
+            const since = Date.now();
+            while (!window.fb) {
+                if (Date.now() - since > timeoutMs) throw new Error('Firebase SDK gagal dimuat. Periksa koneksi internet.');
+                await new Promise(resolve => setTimeout(resolve, 60));
+            }
+            return window.fb;
+        }
+
         function appData() {
             return {
-                activeTab: 'student', // 'student' or 'teacher'
+                activeTab: 'student',
                 isTeacherAuthenticated: false,
+                isTeacherLoginPending: false,
                 showAuthModal: false,
                 showRosterModal: false,
                 showExportModal: false,
                 showAddStudentModal: false,
+                teacherEmail: '',
                 inputPassword: '',
                 showPass: false,
                 authError: false,
                 isSubmitting: false,
                 isCloudConnected: false,
-                isOnlineSync: false,
+                connectionError: '',
                 exportClassId: 'ALL',
                 importCSVText: '',
-
-                // Current Time State
-                currentDateString: '',
-                currentTimeString: '',
-
-                // Student Form State
-                studentForm: {
-                    classId: '',
-                    studentName: '',
-                    status: 'Hadir',
-                    notes: ''
-                },
-
-                // Filters for Teacher
-                teacherFilters: {
-                    searchQuery: '',
-                    classId: 'ALL',
-                    status: 'ALL',
-                    date: new Date().toISOString().split('T')[0]
-                },
-
-                // New Student State
-                newStudent: {
-                    classId: 'VII-A',
-                    name: ''
-                },
-
-                // Toast Notifications
-                toast: {
-                    show: false,
-                    title: '',
-                    message: '',
-                    type: 'success'
-                },
-
-                // Master Data Classes
+                currentDateString: '', currentTimeString: '',
+                studentForm: { classId: '', studentName: '', status: 'Hadir', notes: '' },
+                teacherFilters: { searchQuery: '', classId: 'ALL', status: 'ALL', date: witDateKey() },
+                newStudent: { classId: 'VII-A', name: '' },
+                toast: { show: false, title: '', message: '', type: 'success' },
                 classesList: [
-                    { id: 'VII-A', name: 'Kelas VII-A' },
-                    { id: 'VII-B', name: 'Kelas VII-B' },
-                    { id: 'VIII-A', name: 'Kelas VIII-A' },
-                    { id: 'VIII-B', name: 'Kelas VIII-B' },
-                    { id: 'IX-A', name: 'Kelas IX-A' },
-                    { id: 'IX-B', name: 'Kelas IX-B' }
+                    { id: 'VII-A', name: 'Kelas VII-A' }, { id: 'VII-B', name: 'Kelas VII-B' },
+                    { id: 'VIII-A', name: 'Kelas VIII-A' }, { id: 'VIII-B', name: 'Kelas VIII-B' },
+                    { id: 'IX-A', name: 'Kelas IX-A' }, { id: 'IX-B', name: 'Kelas IX-B' }
                 ],
-
-                // Master Roster of Students
-                studentsRoster: {
-                    'VII-A': ['Aditya Pratama', 'Aisyah Putri', 'Bagus Santoso', 'Citra Dewi', 'Dion Rahadian', 'Eka Nurjanah'],
-                    'VII-B': ['Fajar Sidik', 'Gita Gutawa', 'Hadi Wijaya', 'Indah Permata', 'Joko Susilo'],
-                    'VIII-A': ['Kurniawan', 'Larasati', 'Muhammad Rizky', 'Nadia Safira', 'Oki Setiawan'],
-                    'VIII-B': ['Putri Ayu', 'Qori Ahmad', 'Rian Hidayat', 'Siti Nurhaliza', 'Taufik Hidayat'],
-                    'IX-A': ['Umar Bakri', 'Vina Panduwinata', 'Wahyu Utama', 'Xavier Naufal', 'Yulia Rahman'],
-                    'IX-B': ['Zacki Maulana', 'Anisa Tri', 'Bima Sakti', 'Denny Sumargo']
-                },
-
-                // Attendance Records Data
+                // Nama siswa asli tidak ditanam di repositori publik. Guru menambahkannya setelah login.
+                studentsRoster: { 'VII-A': [], 'VII-B': [], 'VIII-A': [], 'VIII-B': [], 'IX-A': [], 'IX-B': [] },
                 attendanceRecords: [],
+                localReceipts: {},
+                _rosterUnsubscribe: null,
+                _attendanceUnsubscribe: null,
+                _toastTimer: null,
 
-                // Dynamic Available Students List based on selected class
                 get availableStudents() {
-                    if (!this.studentForm.classId) return [];
-                    return this.studentsRoster[this.studentForm.classId] || [];
+                    return this.studentForm.classId ? (this.studentsRoster[this.studentForm.classId] || []) : [];
                 },
-
-                // Filtered records for Teacher View
                 get filteredRecords() {
                     return this.attendanceRecords.filter(item => {
                         const matchClass = this.teacherFilters.classId === 'ALL' || item.classId === this.teacherFilters.classId;
                         const matchStatus = this.teacherFilters.status === 'ALL' || item.status === this.teacherFilters.status;
-                        const matchSearch = !this.teacherFilters.searchQuery || item.studentName.toLowerCase().includes(this.teacherFilters.searchQuery.toLowerCase());
-                        
-                        const recordDate = new Date(item.timestamp).toISOString().split('T')[0];
-                        const matchDate = !this.teacherFilters.date || recordDate === this.teacherFilters.date;
-
+                        const matchSearch = !this.teacherFilters.searchQuery || item.studentName.toLocaleLowerCase('id-ID').includes(this.teacherFilters.searchQuery.toLocaleLowerCase('id-ID'));
+                        const matchDate = !this.teacherFilters.date || witDateKey(item.timestamp) === this.teacherFilters.date;
                         return matchClass && matchStatus && matchSearch && matchDate;
                     });
                 },
-
-                // Statistics Computation
                 get stats() {
-                    const todayRecords = this.filteredRecords;
-                    const total = todayRecords.length;
-                    const hadir = todayRecords.filter(r => r.status === 'Hadir').length;
-                    const izin = todayRecords.filter(r => r.status === 'Izin').length;
-                    const sakit = todayRecords.filter(r => r.status === 'Sakit').length;
-                    const percentage = total > 0 ? Math.round((hadir / total) * 100) : 0;
-
-                    return { hadir, izin, sakit, total, hadirPercentage: percentage };
+                    const rows = this.filteredRecords;
+                    const hadir = rows.filter(r => r.status === 'Hadir').length;
+                    const izin = rows.filter(r => r.status === 'Izin').length;
+                    const sakit = rows.filter(r => r.status === 'Sakit').length;
+                    return { hadir, izin, sakit, total: rows.length, hadirPercentage: rows.length ? Math.round(100 * hadir / rows.length) : 0 };
                 },
-
+                redrawIcons() {
+                    this.$nextTick(() => { if (window.lucide) window.lucide.createIcons(); });
+                },
                 async initApp() {
                     this.updateTime();
                     setInterval(() => this.updateTime(), 1000);
-
-                    if (sessionStorage.getItem('edu_teacher_auth') === 'true') {
-                        this.isTeacherAuthenticated = true;
-                    }
-
-                    // Helper to await Firebase Module initialization
-                    const waitForFB = () => new Promise(resolve => {
-                        if (window.fb) return resolve(window.fb);
-                        const interval = setInterval(() => {
-                            if (window.fb) {
-                                clearInterval(interval);
-                                resolve(window.fb);
-                            }
-                        }, 50);
-                    });
-
                     try {
-                        const fb = await waitForFB();
-                        
-                        // Firebase Authentication Setup
-                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                            await fb.signInWithCustomToken(fb.auth, __initial_auth_token);
-                        } else {
-                            await fb.signInAnonymously(fb.auth);
-                        }
-
-                        this.isCloudConnected = true;
-                        this.isOnlineSync = true;
-
-                        // Strict Firestore Paths as required
-                        const attendanceColl = fb.collection(fb.db, 'artifacts', fb.appId, 'public', 'data', 'attendance_records');
-                        const rosterColl = fb.collection(fb.db, 'artifacts', fb.appId, 'public', 'data', 'roster_data');
-
-                        // Real-time Firestore Attendance Listener
-                        fb.onSnapshot(attendanceColl, (snapshot) => {
-                            const records = [];
-                            snapshot.forEach(doc => {
-                                records.push({ id: doc.id, ...doc.data() });
-                            });
-                            records.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-                            this.attendanceRecords = records;
-                        }, (error) => {
-                            console.error("Firestore attendance listener error:", error);
+                        this.localReceipts = JSON.parse(localStorage.getItem('smp6_receipts') || '{}') || {};
+                    } catch (_) { this.localReceipts = {}; }
+                    try {
+                        const fb = await waitForFirebase();
+                        const user = await new Promise((resolve, reject) => {
+                            let stop;
+                            stop = fb.onAuthStateChanged(fb.auth, u => { if (stop) stop(); resolve(u); }, reject);
                         });
-
-                        // Real-time Firestore Student Roster Listener
-                        fb.onSnapshot(rosterColl, (snapshot) => {
-                            if (!snapshot.empty) {
-                                const cloudRoster = {};
-                                snapshot.forEach(doc => {
-                                    const data = doc.data();
-                                    if (data.classId && data.students) {
-                                        cloudRoster[data.classId] = data.students;
-                                    }
-                                });
-                                if (Object.keys(cloudRoster).length > 0) {
-                                    this.studentsRoster = cloudRoster;
-                                }
-                            } else {
-                                this.saveRosterToCloud();
-                            }
-                        }, (error) => {
-                            console.error("Firestore roster listener error:", error);
-                        });
-
-                    } catch (e) {
-                        console.error("Firebase init fallback to LocalStorage:", e);
-                        const savedRoster = localStorage.getItem('ferdinandus_students_roster');
-                        if (savedRoster) {
-                            try { this.studentsRoster = JSON.parse(savedRoster); } catch (err) {}
+                        if (user && !user.isAnonymous) {
+                            const roleDoc = await fb.getDoc(fb.doc(fb.db, 'teachers', user.uid));
+                            if (roleDoc.exists()) this.isTeacherAuthenticated = true;
+                            else await fb.signOut(fb.auth);
                         }
-                        const savedData = localStorage.getItem('ferdinandus_absen_records');
-                        if (savedData) {
-                            try { this.attendanceRecords = JSON.parse(savedData); } catch (err) {}
-                        }
+                        if (!fb.auth.currentUser) await fb.signInAnonymously(fb.auth);
+                        this.startRosterListener();
+                        if (this.isTeacherAuthenticated) this.startAttendanceListener();
+                    } catch (err) {
+                        console.error('Firebase gagal:', err);
+                        this.connectionError = 'Tidak dapat terhubung ke Firebase. Periksa konfigurasi proyek, koneksi, dan metode login Anonymous.';
                     }
-
-                    this.$nextTick(() => {
-                        if (window.lucide) window.lucide.createIcons();
+                    this.redrawIcons();
+                },
+                startRosterListener() {
+                    const fb = window.fb;
+                    if (this._rosterUnsubscribe) this._rosterUnsubscribe();
+                    const rosterColl = fb.collection(fb.db, 'roster_data');
+                    this._rosterUnsubscribe = fb.onSnapshot(rosterColl, snapshot => {
+                        const roster = { 'VII-A': [], 'VII-B': [], 'VIII-A': [], 'VIII-B': [], 'IX-A': [], 'IX-B': [] };
+                        const classMap = new Map(this.classesList.slice(0, 6).map(c => [c.id, c]));
+                        snapshot.forEach(item => {
+                            const data = item.data();
+                            if (data.classId && Array.isArray(data.students)) {
+                                roster[data.classId] = data.students;
+                                classMap.set(data.classId, { id: data.classId, name: data.className || `Kelas ${data.classId}` });
+                            }
+                        });
+                        this.studentsRoster = roster;
+                        this.classesList = [...classMap.values()];
+                        if (!this.classesList.some(c => c.id === this.newStudent.classId)) this.newStudent.classId = this.classesList[0].id;
+                        this.isCloudConnected = true;
+                        this.connectionError = '';
+                        this.redrawIcons();
+                    }, err => {
+                        console.error('Tidak bisa membaca roster:', err);
+                        this.isCloudConnected = false;
+                        this.connectionError = 'Data siswa tidak dapat dibaca. Periksa Firestore Rules dan koneksi internet.';
                     });
                 },
-
+                startAttendanceListener() {
+                    if (!this.isTeacherAuthenticated) return;
+                    const fb = window.fb;
+                    if (this._attendanceUnsubscribe) this._attendanceUnsubscribe();
+                    this._attendanceUnsubscribe = fb.onSnapshot(fb.collection(fb.db, 'attendance_records'), snapshot => {
+                        const result = [];
+                        snapshot.forEach(item => {
+                            const data = item.data({ serverTimestamps: 'estimate' });
+                            const timestamp = data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : '';
+                            result.push({ id: item.id, ...data, timestamp });
+                        });
+                        result.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+                        this.attendanceRecords = result;
+                        this.redrawIcons();
+                    }, err => {
+                        console.error('Tidak bisa membaca absensi:', err);
+                        this.showToast('Gagal Memuat Data', 'Periksa izin akun guru dan Firestore Rules.', 'error');
+                    });
+                },
                 async submitAttendance() {
-                    if (!this.studentForm.classId || !this.studentForm.studentName) {
-                        this.showToast('Form Belum Lengkap', 'Silakan pilih kelas dan nama murid terlebih dahulu.', 'error');
-                        return;
+                    if (this.isSubmitting) return;
+                    const classId = this.studentForm.classId;
+                    const studentName = this.studentForm.studentName.trim();
+                    if (!classId || !studentName || !(this.studentsRoster[classId] || []).includes(studentName)) {
+                        this.showToast('Data Tidak Valid', 'Pilih kelas dan nama yang tercantum dalam daftar siswa.', 'error'); return;
                     }
-
-                    if (this.checkAlreadySubmitted(this.studentForm.studentName)) {
-                        this.showToast('Sudah Mengisi Absen', `Siswa a.n ${this.studentForm.studentName} sudah melakukan pengisian absensi hari ini!`, 'error');
-                        return;
+                    if (!['Hadir', 'Izin', 'Sakit'].includes(this.studentForm.status)) {
+                        this.showToast('Status Tidak Valid', 'Pilih status kehadiran terlebih dahulu.', 'error'); return;
                     }
-
+                    const notes = this.studentForm.notes.trim();
+                    if (notes.length > 250 || studentName.length > 100 || studentName.includes('/')) {
+                        this.showToast('Data Tidak Valid', 'Periksa nama murid atau panjang catatan (maksimal 250 karakter).', 'error'); return;
+                    }
+                    if (!this.isCloudConnected || !window.fb?.auth?.currentUser) {
+                        this.showToast('Belum Terhubung', 'Tidak dapat mengirim absensi tanpa koneksi Firebase.', 'error'); return;
+                    }
+                    if (this.checkAlreadySubmitted(studentName)) {
+                        this.showToast('Sudah Absen', 'Nama ini telah dikirim dari browser ini hari ini.', 'error'); return;
+                    }
+                    const today = witDateKey();
+                    const id = attendanceId(today, classId, studentName);
                     this.isSubmitting = true;
-
                     try {
-                        const newRecord = {
-                            classId: this.studentForm.classId,
-                            studentName: this.studentForm.studentName,
-                            status: this.studentForm.status,
-                            notes: this.studentForm.notes || '',
-                            timestamp: new Date().toISOString()
-                        };
-
-                        if (window.fb && window.fb.db) {
-                            const attendanceColl = window.fb.collection(window.fb.db, 'artifacts', window.fb.appId, 'public', 'data', 'attendance_records');
-                            await window.fb.addDoc(attendanceColl, newRecord);
-                        } else {
-                            newRecord.id = Date.now().toString();
-                            this.attendanceRecords.unshift(newRecord);
-                            localStorage.setItem('ferdinandus_absen_records', JSON.stringify(this.attendanceRecords));
-                        }
-
+                        await window.fb.setDoc(window.fb.doc(window.fb.db, 'attendance_records', id), {
+                            classId, studentName, status: this.studentForm.status,
+                            notes, attendanceDate: today, createdAt: window.fb.serverTimestamp()
+                        });
+                        const receipts = { ...this.localReceipts, [id]: new Date().toISOString() };
+                        this.localReceipts = receipts;
+                        try { localStorage.setItem('smp6_receipts', JSON.stringify(receipts)); } catch (_) {}
                         this.studentForm.studentName = '';
                         this.studentForm.notes = '';
                         this.studentForm.status = 'Hadir';
-                        this.isSubmitting = false;
-
-                        this.showToast('Kehadiran Terkirim!', 'Presensi Anda berhasil tersimpan secara real-time.', 'success');
+                        this.showToast('Absensi Berhasil', 'Presensi tersimpan di Firebase.', 'success');
                     } catch (err) {
-                        console.error("Error submitting attendance:", err);
-                        this.isSubmitting = false;
-                        this.showToast('Gagal Mengirim', 'Terjadi kendala koneksi ke database cloud.', 'error');
-                    }
+                        console.error('Absensi gagal:', err);
+                        this.showToast('Absensi Tidak Tersimpan', 'Periksa koneksi. Jika siswa sudah absen hari ini, server akan menolak pengiriman ulang.', 'error');
+                    } finally { this.isSubmitting = false; }
                 },
-
                 async deleteRecord(id) {
+                    if (!this.isTeacherAuthenticated || !window.fb || !window.confirm('Hapus data absensi ini secara permanen?')) return;
                     try {
-                        if (window.fb && window.fb.db) {
-                            const docRef = window.fb.doc(window.fb.db, 'artifacts', window.fb.appId, 'public', 'data', 'attendance_records', id);
-                            await window.fb.deleteDoc(docRef);
-                        } else {
-                            this.attendanceRecords = this.attendanceRecords.filter(r => r.id !== id);
-                            localStorage.setItem('ferdinandus_absen_records', JSON.stringify(this.attendanceRecords));
-                        }
-                        this.showToast('Data Dihapus', 'Data absensi berhasil dihapus.', 'success');
+                        await window.fb.deleteDoc(window.fb.doc(window.fb.db, 'attendance_records', id));
+                        this.showToast('Data Dihapus', 'Data presensi sudah dihapus.', 'success');
                     } catch (err) {
-                        console.error("Error deleting record:", err);
-                        this.showToast('Gagal Menghapus', 'Tidak dapat menghapus data.', 'error');
+                        console.error(err); this.showToast('Gagal Menghapus', 'Pastikan Anda login sebagai guru yang diizinkan.', 'error');
                     }
                 },
-
+                async saveRosterToCloud(specificClassId = null, rosterOverride = null) {
+                    if (!this.isTeacherAuthenticated || !window.fb?.auth?.currentUser) throw new Error('Hanya akun guru yang dapat mengubah roster.');
+                    const roster = rosterOverride || this.studentsRoster;
+                    const keys = specificClassId ? [specificClassId] : Object.keys(roster);
+                    for (const id of keys) {
+                        const found = this.classesList.find(c => c.id === id);
+                        await window.fb.setDoc(window.fb.doc(window.fb.db, 'roster_data', id), {
+                            classId: id, className: found?.name || `Kelas ${id}`,
+                            students: [...new Set((roster[id] || []).map(name => name.trim()).filter(Boolean))]
+                        });
+                    }
+                },
                 async addNewStudent() {
-                    if (!this.newStudent.name) return;
+                    if (!this.isTeacherAuthenticated) return;
+                    const name = this.newStudent.name.trim();
                     const classId = this.newStudent.classId;
-                    if (!this.studentsRoster[classId]) {
-                        this.studentsRoster[classId] = [];
+                    if (!name || name.length > 100 || name.includes('/') || !this.classesList.some(c => c.id === classId)) {
+                        this.showToast('Data Tidak Valid', 'Nama atau kelas tidak valid.', 'error'); return;
                     }
-                    if (!this.studentsRoster[classId].includes(this.newStudent.name)) {
-                        this.studentsRoster[classId].push(this.newStudent.name);
-                        await this.saveRosterToCloud(classId);
-                    }
-                    this.newStudent.name = '';
-                    this.showAddStudentModal = false;
-                    this.showToast('Murid Ditambahkan', 'Nama murid baru berhasil dimasukkan ke Cloud Roster.', 'success');
-                },
-
-                async saveRosterToCloud(specificClassId = null) {
-                    if (!window.fb || !window.fb.db) {
-                        localStorage.setItem('ferdinandus_students_roster', JSON.stringify(this.studentsRoster));
-                        return;
+                    if ((this.studentsRoster[classId] || []).some(n => n.toLocaleLowerCase('id-ID') === name.toLocaleLowerCase('id-ID'))) {
+                        this.showToast('Siswa Sudah Ada', 'Nama tersebut sudah berada di kelas ini.', 'error'); return;
                     }
                     try {
-                        const rosterColl = window.fb.collection(window.fb.db, 'artifacts', window.fb.appId, 'public', 'data', 'roster_data');
-                        const classesToSave = specificClassId ? [specificClassId] : Object.keys(this.studentsRoster);
-
-                        for (const cId of classesToSave) {
-                            const docRef = window.fb.doc(rosterColl, cId);
-                            await window.fb.setDoc(docRef, {
-                                classId: cId,
-                                students: this.studentsRoster[cId] || []
-                            });
-                        }
+                        await this.saveRosterToCloud(classId, { ...this.studentsRoster, [classId]: [...(this.studentsRoster[classId] || []), name] });
+                        this.newStudent.name = '';
+                        this.showAddStudentModal = false;
+                        this.showToast('Berhasil', 'Nama siswa disimpan ke Firebase.', 'success');
                     } catch (err) {
-                        console.error("Error saving roster to cloud:", err);
+                        console.error(err); this.showToast('Gagal Menambah', 'Periksa akses Firebase guru.', 'error');
                     }
                 },
-
                 async importRosterFromCSV() {
-                    if (!this.importCSVText.trim()) {
-                        this.showToast('Gagal Sinkron', 'Masukkan data teks CSV terlebih dahulu.', 'error');
-                        return;
+                    if (!this.isTeacherAuthenticated || !this.importCSVText.trim()) {
+                        this.showToast('CSV Kosong', 'Masukkan daftar siswa terlebih dahulu.', 'error'); return;
                     }
-
-                    const lines = this.importCSVText.split('\n');
+                    const draftRoster = Object.fromEntries(Object.entries(this.studentsRoster).map(([id, names]) => [id, [...names]]));
                     let count = 0;
-
-                    lines.forEach(line => {
-                        const parts = line.split(',');
-                        if (parts.length >= 2) {
-                            let className = parts[0].trim();
-                            let studentName = parts[1].trim();
-
-                            if (className.toLowerCase() !== 'kelas' && studentName.toLowerCase() !== 'nama murid') {
-                                let classKey = className.replace(/[^a-zA-Z0-9-]/g, '').toUpperCase();
-                                if (!classKey) classKey = 'UMUM';
-
-                                if (!this.classesList.some(c => c.id === classKey)) {
-                                    this.classesList.push({ id: classKey, name: className });
-                                }
-
-                                if (!this.studentsRoster[classKey]) {
-                                    this.studentsRoster[classKey] = [];
-                                }
-
-                                if (!this.studentsRoster[classKey].includes(studentName)) {
-                                    this.studentsRoster[classKey].push(studentName);
-                                    count++;
-                                }
+                    try {
+                        const lines = this.importCSVText.replace(/^\ufeff/, '').split(/\r?\n/);
+                        for (const line of lines) {
+                            if (!line.trim()) continue;
+                            const cells = parseRosterCsvRow(line);
+                            if (cells.length !== 2) throw new Error('Setiap baris harus memiliki tepat dua kolom: Kelas, Nama Murid.');
+                            const [rawClass, rawName] = cells;
+                            if (/^kelas$/i.test(rawClass) && /^nama murid$/i.test(rawName)) continue;
+                            const classId = classIdFromCsv(rawClass), name = rawName.trim();
+                            if (!classId || !name || name.length > 100 || name.includes('/')) throw new Error(`Baris CSV tidak valid: ${line.slice(0, 80)}`);
+                            if (!draftRoster[classId]) draftRoster[classId] = [];
+                            if (!draftRoster[classId].some(n => n.toLocaleLowerCase('id-ID') === name.toLocaleLowerCase('id-ID'))) {
+                                draftRoster[classId].push(name); count++;
                             }
+                            if (!this.classesList.some(c => c.id === classId)) this.classesList.push({ id: classId, name: `Kelas ${classId}` });
                         }
-                    });
-
-                    await this.saveRosterToCloud();
-                    this.importCSVText = '';
-                    this.showRosterModal = false;
-                    this.showToast('Sinkronisasi Sukses', `${count} data murid tersimpan ke Cloud & Portal Murid.`, 'success');
+                        if (count === 0) {
+                            this.showToast('Tidak Ada Data Baru', 'Semua siswa sudah ada atau CSV berisi judul saja.', 'error'); return;
+                        }
+                        await this.saveRosterToCloud(null, draftRoster);
+                        this.importCSVText = ''; this.showRosterModal = false;
+                        this.showToast('Berhasil', `${count} siswa disimpan ke Firebase.`, 'success');
+                    } catch (err) {
+                        console.error(err); this.showToast('Impor Gagal', err.message || 'Periksa format CSV.', 'error');
+                    }
                 },
-
                 updateTime() {
                     const now = new Date();
-                    const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-                    this.currentDateString = now.toLocaleDateString('id-ID', options);
-                    this.currentTimeString = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                    this.currentDateString = new Intl.DateTimeFormat('id-ID', { timeZone: SCHOOL_TZ, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }).format(now);
+                    this.currentTimeString = new Intl.DateTimeFormat('id-ID', { timeZone: SCHOOL_TZ, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(now) + ' WIT';
+                    const today = witDateKey(now);
+                    if (!this._lastWitDate) this._lastWitDate = today;
+                    if (this._lastWitDate !== today) { this._lastWitDate = today; this.teacherFilters.date = today; }
                 },
-
                 switchTab(tab) {
-                    if (tab === 'teacher' && !this.isTeacherAuthenticated) {
-                        this.openTeacherAuthModal();
-                        return;
-                    }
-                    this.activeTab = tab;
-                    this.$nextTick(() => {
-                        if (window.lucide) window.lucide.createIcons();
-                    });
+                    if (tab === 'teacher' && !this.isTeacherAuthenticated) { this.openTeacherAuthModal(); return; }
+                    this.activeTab = tab; this.redrawIcons();
                 },
-
                 openTeacherAuthModal() {
-                    if (this.isTeacherAuthenticated) {
-                        this.activeTab = 'teacher';
-                    } else {
-                        this.inputPassword = '';
-                        this.authError = false;
-                        this.showAuthModal = true;
-                    }
-                    this.$nextTick(() => { if (window.lucide) window.lucide.createIcons(); });
+                    if (this.isTeacherAuthenticated) { this.switchTab('teacher'); return; }
+                    this.inputPassword = ''; this.authError = false; this.showAuthModal = true; this.redrawIcons();
                 },
-
-                verifyTeacherPassword() {
-                    if (this.inputPassword === 'KATUL') {
+                async verifyTeacherPassword() {
+                    if (this.isTeacherLoginPending) return;
+                    if (!this.teacherEmail.trim() || !this.inputPassword) { this.authError = true; return; }
+                    this.isTeacherLoginPending = true;
+                    try {
+                        const fb = await waitForFirebase();
+                        const result = await fb.signInWithEmailAndPassword(fb.auth, this.teacherEmail.trim(), this.inputPassword);
+                        const roleDoc = await fb.getDoc(fb.doc(fb.db, 'teachers', result.user.uid));
+                        if (!roleDoc.exists()) throw new Error('Akun belum terdaftar sebagai guru.');
                         this.isTeacherAuthenticated = true;
-                        sessionStorage.setItem('edu_teacher_auth', 'true');
+                        this.authError = false;
+                        this.inputPassword = '';
                         this.showAuthModal = false;
                         this.activeTab = 'teacher';
-                        this.showToast('Berhasil Masuk', 'Selamat datang di Portal Guru Absen Ferdinandus!', 'success');
-                    } else {
+                        this.startRosterListener();
+                        this.startAttendanceListener();
+                        this.showToast('Login Berhasil', 'Selamat datang di Portal Guru.', 'success');
+                    } catch (err) {
+                        console.error('Login guru gagal:', err);
                         this.authError = true;
+                        this.isTeacherAuthenticated = false;
+                        try {
+                            if (window.fb?.auth?.currentUser && !window.fb.auth.currentUser.isAnonymous) {
+                                await window.fb.signOut(window.fb.auth);
+                                await window.fb.signInAnonymously(window.fb.auth);
+                                this.startRosterListener();
+                            }
+                        } catch (fallbackError) { console.error(fallbackError); }
+                    } finally { this.isTeacherLoginPending = false; }
+                },
+                async logoutTeacher() {
+                    try {
+                        this.isTeacherAuthenticated = false;
+                        if (this._attendanceUnsubscribe) this._attendanceUnsubscribe();
+                        this._attendanceUnsubscribe = null;
+                        this.attendanceRecords = [];
+                        this.activeTab = 'student';
+                        if (window.fb) {
+                            await window.fb.signOut(window.fb.auth);
+                            await window.fb.signInAnonymously(window.fb.auth);
+                            this.startRosterListener();
+                        }
+                        this.showToast('Keluar Portal', 'Akun guru sudah keluar.', 'success');
+                    } catch (err) {
+                        console.error(err); this.connectionError = 'Sesi siswa gagal diaktifkan. Muat ulang halaman.';
                     }
                 },
-
-                logoutTeacher() {
-                    this.isTeacherAuthenticated = false;
-                    sessionStorage.removeItem('edu_teacher_auth');
-                    this.activeTab = 'student';
-                    this.showToast('Keluar Portal', 'Anda telah keluar dari Portal Guru.', 'success');
-                },
-
-                onClassChange() {
-                    this.studentForm.studentName = '';
-                },
-
+                onClassChange() { this.studentForm.studentName = ''; },
                 checkAlreadySubmitted(name) {
-                    if (!name) return false;
-                    const todayDateStr = new Date().toISOString().split('T')[0];
-                    return this.attendanceRecords.some(r => {
-                        const recDate = new Date(r.timestamp).toISOString().split('T')[0];
-                        return r.studentName.trim().toLowerCase() === name.trim().toLowerCase() && recDate === todayDateStr;
-                    });
+                    if (!name || !this.studentForm.classId) return false;
+                    return Boolean(this.localReceipts[attendanceId(witDateKey(), this.studentForm.classId, name)]);
                 },
-
                 getStudentTodayRecord(name) {
-                    if (!name) return null;
-                    const todayDateStr = new Date().toISOString().split('T')[0];
-                    return this.attendanceRecords.find(r => {
-                        const recDate = new Date(r.timestamp).toISOString().split('T')[0];
-                        return r.studentName.trim().toLowerCase() === name.trim().toLowerCase() && recDate === todayDateStr;
-                    }) || null;
+                    if (!name || !this.studentForm.classId) return null;
+                    const stamp = this.localReceipts[attendanceId(witDateKey(), this.studentForm.classId, name)];
+                    return stamp ? { timestamp: stamp } : null;
                 },
-
-                checkDuplicateAttendance() {
-                    this.$nextTick(() => {
-                        if (window.lucide) window.lucide.createIcons();
-                    });
-                },
-
+                checkDuplicateAttendance() { this.redrawIcons(); },
                 downloadExcelTemplate() {
-                    let csv = "Kelas,Nama Murid\n";
-                    csv += "Kelas VII-A,Ahmad Rizky\n";
-                    csv += "Kelas VII-A,Budi Santoso\n";
-                    csv += "Kelas VIII-B,Citra Kirana\n";
-
-                    const encodedUri = encodeURI("data:text/csv;charset=utf-8," + csv);
-                    const link = document.createElement("a");
-                    link.setAttribute("href", encodedUri);
-                    link.setAttribute("download", "Template_Roster_Siswa_Ferdinandus.csv");
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-
-                    this.showToast('Template Terunduh', 'Format Excel/CSV berhasil diunduh.', 'success');
+                    saveCsv('Template_Roster_SMPN6.csv', [
+                        ['Kelas', 'Nama Murid'], ['Kelas VII-A', 'Contoh Siswa Satu'],
+                        ['Kelas VII-A', 'Contoh Siswa Dua'], ['Kelas VIII-B', 'Contoh Siswa Tiga']
+                    ]);
+                    this.showToast('Template Siap', 'CSV template telah dibuat.', 'success');
                 },
-
                 exportClassExcel() {
+                    if (!this.isTeacherAuthenticated) return;
                     const selectedClass = this.exportClassId;
-                    const filtered = this.attendanceRecords.filter(r => {
-                        const matchClass = selectedClass === 'ALL' || r.classId === selectedClass;
-                        const recordDate = new Date(r.timestamp).toISOString().split('T')[0];
-                        const matchDate = !this.teacherFilters.date || recordDate === this.teacherFilters.date;
-                        return matchClass && matchDate;
-                    });
-
-                    if (filtered.length === 0) {
-                        this.showToast('Ekspor Kosong', 'Tidak ada data presensi pada kelas/tanggal ini.', 'error');
-                        return;
-                    }
-
-                    const classNameText = selectedClass === 'ALL' ? 'Semua Kelas' : this.getClassName(selectedClass);
-
-                    let csvContent = "data:text/csv;charset=utf-8,";
-                    csvContent += "=== REKAP PRESENSI MURID ONLINE - ABSEN PEMBELAJARAN JARAK JAUH ===\n";
-                    csvContent += "Mata Pelajaran,Pendidikan Kewarganegaraan\n";
-                    csvContent += `Kelas,${classNameText}\n`;
-                    csvContent += `Tanggal Rekap,${this.teacherFilters.date}\n`;
-                    csvContent += `Total Kehadiran,${filtered.length} Murid\n\n`;
-
-                    csvContent += "No,Hari,Tanggal,Bulan,Tahun,Jam,Nama Murid,Kelas,Status Kehadiran,Catatan\n";
-
-                    const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-                    const dayNames = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
-
-                    filtered.forEach((r, idx) => {
+                    const filtered = this.attendanceRecords.filter(r =>
+                        (selectedClass === 'ALL' || r.classId === selectedClass) &&
+                        (!this.teacherFilters.date || witDateKey(r.timestamp) === this.teacherFilters.date)
+                    );
+                    if (!filtered.length) { this.showToast('Tidak Ada Data', 'Tidak ada absensi pada filter tersebut.', 'error'); return; }
+                    const date = this.teacherFilters.date || 'semua-tanggal';
+                    const rows = [['No', 'Hari', 'Tanggal', 'Bulan', 'Tahun', 'Jam (WIT)', 'Nama Murid', 'Kelas', 'Status Kehadiran', 'Catatan']];
+                    filtered.forEach((r, i) => {
                         const d = new Date(r.timestamp);
-                        const day = dayNames[d.getDay()];
-                        const dateNum = d.getDate();
-                        const month = monthNames[d.getMonth()];
-                        const year = d.getFullYear();
-                        const time = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                        const cName = this.getClassName(r.classId);
-
-                        const row = `${idx + 1},"${day}",${dateNum},"${month}",${year},"${time}","${r.studentName}","${cName}","${r.status}","${r.notes || '-'}"`;
-                        csvContent += row + "\n";
+                        const parts = Object.fromEntries(new Intl.DateTimeFormat('id-ID', {
+                            timeZone: SCHOOL_TZ, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+                        }).formatToParts(d).filter(p => p.type !== 'literal').map(p => [p.type, p.value]));
+                        const time = new Intl.DateTimeFormat('id-ID', { timeZone: SCHOOL_TZ, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(d);
+                        rows.push([i + 1, parts.weekday, parts.day, parts.month, parts.year, time,
+                            r.studentName, this.getClassName(r.classId), r.status, r.notes || '-']);
                     });
-
-                    const encodedUri = encodeURI(csvContent);
-                    const link = document.createElement("a");
-                    link.setAttribute("href", encodedUri);
-                    link.setAttribute("download", `Rekap_Absen_PKn_${selectedClass}_${this.teacherFilters.date}.csv`);
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-
+                    saveCsv(`Rekap_Absen_PKn_${selectedClass}_${date}.csv`, rows);
                     this.showExportModal = false;
-                    this.showToast('Rekapan Berhasil', 'File Excel rekapan kelas berhasil diunduh.', 'success');
+                    this.showToast('Ekspor Berhasil', 'Rekap CSV sudah dibuat.', 'success');
                 },
-
-                getClassName(classId) {
-                    const found = this.classesList.find(c => c.id === classId);
-                    return found ? found.name : classId;
+                getClassName(classId) { return this.classesList.find(c => c.id === classId)?.name || classId; },
+                formatTime(value) {
+                    if (!value) return '-';
+                    const d = new Date(value);
+                    return Number.isNaN(d.getTime()) ? '-' : new Intl.DateTimeFormat('id-ID', { timeZone: SCHOOL_TZ, hour: '2-digit', minute: '2-digit', hour12: false }).format(d) + ' WIT';
                 },
-
-                formatTime(isoString) {
-                    if (!isoString) return '-';
-                    const date = new Date(isoString);
-                    return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-                },
-
                 showToast(title, message, type = 'success') {
-                    this.toast.title = title;
-                    this.toast.message = message;
-                    this.toast.type = type;
-                    this.toast.show = true;
-
-                    this.$nextTick(() => { if (window.lucide) window.lucide.createIcons(); });
-
-                    setTimeout(() => {
-                        this.toast.show = false;
-                    }, 4000);
+                    this.toast = { show: true, title, message, type };
+                    this.redrawIcons();
+                    if (this._toastTimer) clearTimeout(this._toastTimer);
+                    this._toastTimer = setTimeout(() => { this.toast.show = false; }, 4000);
                 }
-            }
+            };
         }
     </script>
 </body>
